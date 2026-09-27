@@ -1,1 +1,497 @@
-<!doctype html><html><head><meta charset="utf-8"><title>WaveLab Operations</title></head><body><main><h1>Operations</h1><pre id="data">loading</pre></main><script>fetch('/api/operations').then(r=>r.json()).then(v=>data.textContent=JSON.stringify(v,null,2))</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WaveLab 操作台</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f2f5f8; color: #1d2b38; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: #10324a; color: #fff; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  #conn { margin-left: auto; font-size: 13px; padding: 4px 12px; border-radius: 999px; background: #63788c; }
+  #conn.online { background: #1e9e5a; }
+  #conn.offline { background: #c0392b; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px 20px 56px; display: grid; gap: 16px; }
+  section { background: #fff; border: 1px solid #dce4ec; border-radius: 8px; padding: 14px 16px; }
+  section.drills { background: #fffdf6; border-color: #ead9a8; }
+  h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 2px 9px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+  .badge.measured { background: #e2f2e9; color: #146c43; border: 1px solid #9fd3b6; }
+  .badge.drill { background: #fdf0d5; color: #8a5a00; border: 1px solid #eccf8f; }
+  .hint { font-size: 12px; color: #5c6f80; margin: 8px 0 0; }
+  .grid { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+  label { display: grid; gap: 4px; font-size: 12px; color: #41586c; }
+  input, select, button { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid #c3cfda; border-radius: 6px; background: #fff; }
+  button { cursor: pointer; background: #10324a; color: #fff; border-color: #10324a; padding: 7px 14px; }
+  button.ghost { background: #fff; color: #10324a; }
+  button:disabled { opacity: .5; cursor: default; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e6ecf2; vertical-align: top; }
+  th { font-size: 12px; color: #41586c; background: #f6f9fb; }
+  .group-title { font-size: 13px; font-weight: 600; margin: 12px 0 2px; color: #10324a; }
+  .state { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+  .state.pending { background: #e3ecf5; color: #1f5c8b; }
+  .state.confirmed { background: #dff2e5; color: #146c43; }
+  .state.duplicate { background: #e0f2f1; color: #0f6a5f; }
+  .state.conflict { background: #fde3e0; color: #a02c1d; }
+  .state.rejected { background: #fdeed3; color: #92580a; }
+  .reason { font-size: 12px; color: #a02c1d; }
+  .ok-line { font-size: 12px; color: #146c43; }
+  .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  pre { background: #0f1c26; color: #d7e3ee; padding: 10px 12px; border-radius: 6px; font-size: 12px; overflow: auto; max-height: 260px; }
+  .empty { font-size: 13px; color: #7a8b99; padding: 6px 0; }
+  #toast { position: fixed; right: 16px; bottom: 16px; background: #10324a; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13px; display: none; max-width: 60%; }
+</style>
+</head>
+<body>
+<header>
+  <h1>WaveLab 操作台</h1>
+  <span id="conn">连接检测中…</span>
+</header>
+<main>
+  <section id="sec-entry">
+    <h2>读数录入台 <span class="badge measured">实测</span></h2>
+    <div class="grid">
+      <label>目标运行
+        <select id="runSelect"></select>
+      </label>
+      <label>新运行名称 <input id="nrName" placeholder="如 tow-05"></label>
+      <label>模型 <input id="nrModel" placeholder="如 hull-A"></label>
+      <label>断面 <input id="nrSection" placeholder="如 section-a"></label>
+      <label>台车 <input id="nrCarriage" placeholder="如 carriage-1"></label>
+      <button id="btnCreateRun" class="ghost">新建实测运行</button>
+    </div>
+    <div class="grid" style="margin-top:10px">
+      <label>探头
+        <input id="fProbe" list="probeList" placeholder="如 probe-a" autocomplete="off">
+        <datalist id="probeList"></datalist>
+      </label>
+      <label>类型
+        <select id="fKind">
+          <option value="wave_time">波高 wave_time</option>
+          <option value="force">力 force</option>
+        </select>
+      </label>
+      <label>读数 <input id="fValue" type="number" step="any" placeholder="0.00"></label>
+      <label>观测时间 <input id="fTime" type="datetime-local" step="1"></label>
+      <button id="btnStage">暂存读数</button>
+    </div>
+    <p class="hint">读数先按「运行 + 探头」暂存在本机浏览器,断网不会丢失;恢复连接后点击「分批上传」逐批确认提交,服务器会识别重试帧并给出冲突原因。</p>
+  </section>
+
+  <section id="sec-pending">
+    <h2>待提交队列 <span id="pendingBadge" class="badge measured">0 帧待上传</span></h2>
+    <div class="actions">
+      <button id="btnUpload">分批上传</button>
+      <button id="btnClearDone" class="ghost">清除已确认</button>
+      <span id="uploadMsg" class="hint"></span>
+    </div>
+    <div id="queue"></div>
+  </section>
+
+  <section id="sec-reconcile">
+    <h2>提交核对</h2>
+    <div class="actions">
+      <button id="btnReconcile" class="ghost">重新核对</button>
+      <span class="hint">对照服务器已提交读数与本地暂存队列;本地待提交但服务器已有的帧会自动标记为已提交。</span>
+    </div>
+    <div id="reconcile"></div>
+  </section>
+
+  <section id="sec-measured">
+    <h2>实测数据 <span class="badge measured">实测</span></h2>
+    <div id="measuredRuns"></div>
+    <pre id="runDetail" style="display:none"></pre>
+  </section>
+
+  <section id="sec-drills" class="drills">
+    <h2>演练数据 <span class="badge drill">演练</span></h2>
+    <p class="hint">以下为固定诊断演练场景,仅供查看,与上方实测读数严格区分,不能在此录入。</p>
+    <div id="drillRuns"></div>
+  </section>
+</main>
+<div id="toast"></div>
+<script>
+'use strict';
+
+const STORE_KEY = 'wavelab.entry-console.v1';
+const RUN_KEY = 'wavelab.entry-console.run';
+const BATCH_SIZE = 20;
+
+// 本地暂存队列:断网时读数保存在这里,恢复连接后分批确认上传。
+// 帧状态: pending 待提交 | confirmed 已提交 | duplicate 服务器已有(重试帧)
+//         conflict 冲突(同帧号不同读数) | rejected 被服务器拒绝
+let queue = loadQueue();
+let runs = [];
+let currentRun = localStorage.getItem(RUN_KEY) || '';
+let uploading = false;
+
+function loadQueue() {
+  try {
+    const v = JSON.parse(localStorage.getItem(STORE_KEY));
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+}
+function saveQueue() { localStorage.setItem(STORE_KEY, JSON.stringify(queue)); }
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+function setConn(online) {
+  const el = document.getElementById('conn');
+  el.className = online ? 'online' : 'offline';
+  el.textContent = online ? '在线' : '离线 · 读数暂存本机';
+}
+
+async function apiJson(path, options) {
+  let res;
+  try {
+    res = await fetch(path, options);
+  } catch (e) {
+    setConn(false);
+    throw e;
+  }
+  setConn(true);
+  let body = null;
+  try { body = await res.json(); } catch (e) { /* 空响应 */ }
+  return { ok: res.ok, status: res.status, body };
+}
+
+/* ---------- 演练数据(固定诊断场景,只读) ---------- */
+
+async function refreshDrills() {
+  const box = document.getElementById('drillRuns');
+  try {
+    const out = await apiJson('/api/operations');
+    const ops = (out.body && out.body.data) || [];
+    if (!ops.length) { box.innerHTML = '<div class="empty">暂无演练场景</div>'; return; }
+    box.innerHTML = '<table><thead><tr><th>名称</th><th>模型</th><th>断面</th><th>台车</th><th>阶段</th><th>来源</th></tr></thead><tbody>' +
+      ops.map(o => '<tr><td>' + esc(o.name) + '</td><td>' + esc(o.model_name) + '</td><td>' + esc(o.section) + '</td><td>' +
+        esc(o.carriage) + '</td><td>' + esc(o.stage) + '</td><td><span class="badge drill">演练</span></td></tr>').join('') +
+      '</tbody></table>';
+  } catch (e) {
+    box.innerHTML = '<div class="empty">演练数据加载失败(离线)</div>';
+  }
+}
+
+/* ---------- 实测运行 ---------- */
+
+async function refreshRuns() {
+  const box = document.getElementById('measuredRuns');
+  try {
+    const out = await apiJson('/api/measured-runs');
+    runs = (out.body && out.body.data) || [];
+  } catch (e) {
+    box.innerHTML = '<div class="empty">实测运行加载失败(离线),录入与暂存不受影响。</div>';
+    renderRunSelect();
+    return;
+  }
+  if (!runs.length) {
+    box.innerHTML = '<div class="empty">暂无实测运行,请先在上方新建。</div>';
+  } else {
+    box.innerHTML = '<table><thead><tr><th>名称</th><th>模型</th><th>断面</th><th>台车</th><th>服务器已提交</th><th>来源</th><th></th></tr></thead><tbody>' +
+      runs.map(r => '<tr><td>' + esc(r.operation.name) + '</td><td>' + esc(r.operation.model_name) + '</td><td>' +
+        esc(r.operation.section) + '</td><td>' + esc(r.operation.carriage) + '</td><td>' + (r.evidence ? r.evidence.length : 0) + ' 帧</td>' +
+        '<td><span class="badge measured">实测</span></td>' +
+        '<td><button class="ghost" data-analyze="' + esc(r.operation.id) + '">分析</button></td></tr>').join('') +
+      '</tbody></table>';
+  }
+  renderRunSelect();
+  renderProbeList();
+}
+
+function renderRunSelect() {
+  const sel = document.getElementById('runSelect');
+  const prev = currentRun;
+  sel.innerHTML = '';
+  if (!runs.length) {
+    sel.innerHTML = '<option value="">(先新建实测运行)</option>';
+    return;
+  }
+  for (const r of runs) {
+    const opt = document.createElement('option');
+    opt.value = r.operation.id;
+    opt.textContent = r.operation.name + ' · ' + r.operation.model_name;
+    sel.appendChild(opt);
+  }
+  if (prev && runs.some(r => r.operation.id === prev)) sel.value = prev;
+  currentRun = sel.value;
+  localStorage.setItem(RUN_KEY, currentRun);
+}
+
+function renderProbeList() {
+  const probes = new Set();
+  for (const f of queue) if (f.run === currentRun) probes.add(f.source_id);
+  const run = runs.find(r => r.operation.id === currentRun);
+  if (run && run.evidence) for (const e of run.evidence) probes.add(e.source_id);
+  document.getElementById('probeList').innerHTML =
+    [...probes].sort().map(p => '<option value="' + esc(p) + '">').join('');
+}
+
+async function createRun() {
+  const payload = {
+    name: document.getElementById('nrName').value.trim(),
+    model_name: document.getElementById('nrModel').value.trim(),
+    section: document.getElementById('nrSection').value.trim(),
+    carriage: document.getElementById('nrCarriage').value.trim()
+  };
+  if (!payload.name || !payload.model_name || !payload.section || !payload.carriage) {
+    toast('新运行的名称、模型、断面、台车均必填');
+    return;
+  }
+  try {
+    const out = await apiJson('/api/measured-runs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    if (!out.ok) { toast('新建失败:' + reasonOf(out)); return; }
+    currentRun = out.body.data.operation.id;
+    localStorage.setItem(RUN_KEY, currentRun);
+    for (const id of ['nrName', 'nrModel', 'nrSection', 'nrCarriage']) document.getElementById(id).value = '';
+    await refreshRuns();
+    await reconcile();
+    toast('已创建实测运行');
+  } catch (e) {
+    toast('离线:无法新建运行,可先为已有运行暂存读数');
+  }
+}
+
+function reasonOf(out) {
+  return (out.body && (out.body.reason || (out.body.data && out.body.data.reason))) || ('HTTP ' + out.status);
+}
+
+/* ---------- 录入与暂存 ---------- */
+
+function nowLocal() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 19);
+}
+
+function stageFrame() {
+  const run = document.getElementById('runSelect').value;
+  const source = document.getElementById('fProbe').value.trim();
+  const kind = document.getElementById('fKind').value;
+  const value = Number(document.getElementById('fValue').value);
+  const timeLocal = document.getElementById('fTime').value;
+  if (!run) { toast('请先选择目标运行'); return; }
+  if (!source) { toast('请填写探头编号'); return; }
+  if (!Number.isFinite(value)) { toast('读数必须是有限数值'); return; }
+  if (!timeLocal) { toast('请填写观测时间'); return; }
+  const runInfo = runs.find(r => r.operation.id === run);
+  queue.push({
+    frame_id: crypto.randomUUID(),
+    run: run,
+    run_label: runInfo ? runInfo.operation.name : run,
+    source_id: source,
+    kind: kind,
+    value: value,
+    recorded_at: new Date(timeLocal).toISOString(),
+    state: 'pending',
+    reason: ''
+  });
+  saveQueue();
+  document.getElementById('fValue').value = '';
+  document.getElementById('fTime').value = nowLocal();
+  renderQueue();
+  renderProbeList();
+}
+
+const STATE_LABEL = { pending: '待提交', confirmed: '已提交', duplicate: '重复帧', conflict: '冲突', rejected: '被拒' };
+
+function renderQueue() {
+  const box = document.getElementById('queue');
+  const pendingN = queue.filter(f => f.state === 'pending').length;
+  document.getElementById('pendingBadge').textContent = pendingN + ' 帧待上传';
+  if (!queue.length) { box.innerHTML = '<div class="empty">本地暂存队列为空。</div>'; return; }
+  // 按运行 + 探头分组展示
+  const byRun = new Map();
+  for (const f of queue) {
+    if (!byRun.has(f.run)) byRun.set(f.run, new Map());
+    const byProbe = byRun.get(f.run);
+    if (!byProbe.has(f.source_id)) byProbe.set(f.source_id, []);
+    byProbe.get(f.source_id).push(f);
+  }
+  let html = '';
+  for (const [runId, byProbe] of byRun) {
+    const label = (byProbe.values().next().value || [])[0].run_label;
+    for (const [probe, frames] of byProbe) {
+      html += '<div class="group-title">运行「' + esc(label) + '」 · 探头「' + esc(probe) + '」(' + frames.length + ' 帧)</div>';
+      html += '<table><thead><tr><th>观测时间</th><th>类型</th><th>读数</th><th>状态</th><th>说明</th></tr></thead><tbody>';
+      for (const f of frames) {
+        html += '<tr><td>' + esc(new Date(f.recorded_at).toLocaleString()) + '</td><td>' + esc(f.kind) + '</td><td>' + esc(f.value) + '</td>' +
+          '<td><span class="state ' + esc(f.state) + '">' + esc(STATE_LABEL[f.state] || f.state) + '</span></td>' +
+          '<td>' + (f.reason ? '<span class="reason">' + esc(f.reason) + '</span>' : '') + '</td></tr>';
+      }
+      html += '</tbody></table>';
+    }
+  }
+  box.innerHTML = html;
+}
+
+/* ---------- 分批确认上传 ---------- */
+
+function wireFrame(f) {
+  return { frame_id: f.frame_id, kind: f.kind, source_id: f.source_id, value: f.value, recorded_at: f.recorded_at };
+}
+
+function applyResults(results) {
+  for (const r of results || []) {
+    const f = queue.find(q => q.frame_id === r.frame_id);
+    if (!f) continue;
+    if (r.status === 'recorded') { f.state = 'confirmed'; f.reason = ''; }
+    else if (r.status === 'duplicate') { f.state = 'duplicate'; f.reason = r.reason || ''; }
+    else if (r.status === 'conflict') { f.state = 'conflict'; f.reason = r.reason || ''; }
+    else if (r.status === 'rejected') { f.state = 'rejected'; f.reason = r.reason || ''; }
+  }
+  saveQueue();
+}
+
+async function uploadPending() {
+  if (uploading) return;
+  uploading = true;
+  const msg = document.getElementById('uploadMsg');
+  try {
+    const byRun = new Map();
+    for (const f of queue) {
+      if (f.state !== 'pending') continue;
+      if (!byRun.has(f.run)) byRun.set(f.run, []);
+      byRun.get(f.run).push(f);
+    }
+    if (!byRun.size) { msg.textContent = '没有待上传的读数。'; return; }
+    let uploaded = 0, stopped = false;
+    for (const [runId, frames] of byRun) {
+      for (let i = 0; i < frames.length && !stopped; i += BATCH_SIZE) {
+        const chunk = frames.slice(i, i + BATCH_SIZE);
+        let out;
+        try {
+          out = await apiJson('/api/measured-runs/' + encodeURIComponent(runId) + '/evidence/batch', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frames: chunk.map(wireFrame) })
+          });
+        } catch (e) {
+          msg.textContent = '网络中断,已上传 ' + uploaded + ' 帧,其余保留在队列中。';
+          stopped = true;
+          break;
+        }
+        if (!out.ok) {
+          const reason = reasonOf(out);
+          for (const f of chunk) { f.state = 'conflict'; f.reason = reason; }
+          saveQueue();
+          msg.textContent = '本批被拒绝:' + reason;
+          stopped = true;
+          break;
+        }
+        applyResults(out.body && out.body.data && out.body.data.results);
+        uploaded += chunk.length;
+        msg.textContent = '已确认上传 ' + uploaded + ' 帧…';
+        renderQueue();
+      }
+    }
+    if (!stopped) msg.textContent = '本批上传完成,共确认 ' + uploaded + ' 帧。';
+  } finally {
+    uploading = false;
+    saveQueue();
+    renderQueue();
+    await refreshRuns();
+    await reconcile();
+  }
+}
+
+function clearConfirmed() {
+  const before = queue.length;
+  queue = queue.filter(f => f.state === 'pending' || f.state === 'conflict' || f.state === 'rejected');
+  saveQueue();
+  renderQueue();
+  toast('已清除 ' + (before - queue.length) + ' 帧已确认读数;冲突与待提交帧保留。');
+}
+
+/* ---------- 提交核对 ---------- */
+
+async function reconcile() {
+  const box = document.getElementById('reconcile');
+  if (!runs.length) { box.innerHTML = '<div class="empty">暂无实测运行可核对。</div>'; return; }
+  const rows = [];
+  let changed = false;
+  for (const run of runs) {
+    const id = run.operation.id;
+    let evidence = run.evidence || [];
+    try {
+      const out = await apiJson('/api/measured-runs/' + encodeURIComponent(id));
+      if (out.ok && out.body && out.body.data) evidence = out.body.data.evidence || [];
+    } catch (e) { /* 离线时用上次列表 */ }
+    const serverFrames = new Map();
+    for (const e of evidence) if (e.frame_id) serverFrames.set(e.frame_id, e);
+    const local = queue.filter(f => f.run === id);
+    // 本地待提交但服务器已有同帧号 → 之前其实已上传成功
+    for (const f of local) {
+      if (f.state === 'pending' && serverFrames.has(f.frame_id)) { f.state = 'confirmed'; f.reason = ''; changed = true; }
+    }
+    const pendingN = local.filter(f => f.state === 'pending').length;
+    const conflictN = local.filter(f => f.state === 'conflict' || f.state === 'rejected').length;
+    const anomalies = local.filter(f => (f.state === 'confirmed' || f.state === 'duplicate') && !serverFrames.has(f.frame_id)).length;
+    rows.push('<tr><td>' + esc(run.operation.name) + '</td>' +
+      '<td>' + evidence.length + ' 帧</td>' +
+      '<td>' + (pendingN ? '<span class="state pending">' + pendingN + ' 帧待提交</span>' : '<span class="ok-line">0</span>') + '</td>' +
+      '<td>' + (conflictN ? '<span class="state conflict">' + conflictN + ' 帧待处理</span>' : '<span class="ok-line">0</span>') + '</td>' +
+      '<td>' + (anomalies ? '<span class="reason">' + anomalies + ' 帧本地已确认但服务器缺失</span>' : '<span class="ok-line">一致</span>') + '</td></tr>');
+  }
+  if (changed) { saveQueue(); renderQueue(); }
+  box.innerHTML = '<table><thead><tr><th>运行</th><th>服务器已提交</th><th>本地待提交</th><th>冲突/被拒</th><th>核对结果</th></tr></thead><tbody>' +
+    rows.join('') + '</tbody></table>';
+}
+
+/* ---------- 运行分析 ---------- */
+
+async function showAnalysis(id) {
+  const pre = document.getElementById('runDetail');
+  try {
+    const out = await apiJson('/api/measured-runs/' + encodeURIComponent(id) + '/analysis');
+    if (!out.ok) { toast('分析失败:' + reasonOf(out)); return; }
+    pre.style.display = 'block';
+    pre.textContent = JSON.stringify(out.body.data, null, 2);
+  } catch (e) {
+    toast('离线:无法获取分析');
+  }
+}
+
+/* ---------- 事件与初始化 ---------- */
+
+async function refreshAll() {
+  await Promise.all([refreshDrills(), refreshRuns()]);
+  await reconcile();
+}
+
+document.getElementById('btnStage').addEventListener('click', stageFrame);
+document.getElementById('btnUpload').addEventListener('click', uploadPending);
+document.getElementById('btnClearDone').addEventListener('click', clearConfirmed);
+document.getElementById('btnReconcile').addEventListener('click', reconcile);
+document.getElementById('btnCreateRun').addEventListener('click', createRun);
+document.getElementById('runSelect').addEventListener('change', e => {
+  currentRun = e.target.value;
+  localStorage.setItem(RUN_KEY, currentRun);
+  renderProbeList();
+});
+document.getElementById('measuredRuns').addEventListener('click', e => {
+  const id = e.target && e.target.getAttribute && e.target.getAttribute('data-analyze');
+  if (id) showAnalysis(id);
+});
+window.addEventListener('online', () => { setConn(true); uploadPending(); refreshAll(); });
+window.addEventListener('offline', () => setConn(false));
+
+document.getElementById('fTime').value = nowLocal();
+setConn(navigator.onLine);
+renderQueue();
+refreshAll();
+</script>
+</body>
+</html>

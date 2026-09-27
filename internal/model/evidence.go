@@ -21,6 +21,9 @@ type Evidence struct {
     Value float64 `json:"value"`
     RecordedAt time.Time `json:"recorded_at"`
     Durable bool `json:"durable"`
+    // FrameID is the client-supplied idempotency key for one reading. It is
+    // empty for evidence that did not arrive through the entry console.
+    FrameID string `json:"frame_id,omitempty"`
 }
 
 type DeviceCommand struct {
@@ -57,6 +60,18 @@ func (e Evidence) WithDurability(durable bool) Evidence {
     return e
 }
 
+func (e Evidence) WithFrameID(frame string) Evidence {
+    e.FrameID = frame
+    return e
+}
+
 func (e Evidence) SamePhysicalSource(other Evidence) bool {
     return e.Run == other.Run && e.Revision == other.Revision && e.SourceID == other.SourceID
+}
+
+// SameFramePayload reports whether two frames carry the same physical reading,
+// which is what makes a retransmitted frame a harmless retry rather than a
+// conflict.
+func (e Evidence) SameFramePayload(other Evidence) bool {
+    return e.Kind == other.Kind && e.SourceID == other.SourceID && e.Value == other.Value && e.RecordedAt.Equal(other.RecordedAt)
 }

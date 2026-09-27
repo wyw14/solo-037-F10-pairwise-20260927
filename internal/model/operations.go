@@ -2,6 +2,15 @@ package model
 
 import "time"
 
+// OperationOrigin separates the fixed diagnostic drill scenario from
+// operator-supplied measurements so pages and archives never mix them.
+type OperationOrigin string
+
+const (
+    OriginDiagnostic OperationOrigin = "diagnostic"
+    OriginMeasured   OperationOrigin = "measured"
+)
+
 type Operation struct {
     ID RunID `json:"id"`
     Name string `json:"name"`
@@ -10,6 +19,7 @@ type Operation struct {
     Carriage string `json:"carriage"`
     Stage RunStage `json:"stage"`
     Revision RevisionID `json:"revision"`
+    Origin OperationOrigin `json:"origin"`
     CreatedAt time.Time `json:"created_at"`
     UpdatedAt time.Time `json:"updated_at"`
 }
@@ -24,6 +34,7 @@ func NewOperation(name string, modelName string, section string, carriage string
         Carriage: carriage,
         Stage: StageConfigured,
         Revision: NewRevisionID(),
+        Origin: OriginDiagnostic,
         CreatedAt: now,
         UpdatedAt: now,
     }
