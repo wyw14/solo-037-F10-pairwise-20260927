@@ -1,1 +1,676 @@
-<!doctype html><html><head><meta charset="utf-8"><title>WaveLab Operations</title></head><body><main><h1>Operations</h1><pre id="data">loading</pre></main><script>fetch('/api/operations').then(r=>r.json()).then(v=>data.textContent=JSON.stringify(v,null,2))</script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WaveLab 测量录入台</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --ink: #1f2933; --muted: #64748b;
+    --line: #d8dee6; --blue: #1d4ed8; --blue-bg: #e8effc;
+    --green: #15803d; --green-bg: #e7f6ec; --red: #b91c1c; --red-bg: #fdecec;
+    --amber: #92400e; --amber-bg: #fef3c7; --amber-line: #d97706;
+    --gray-bg: #eef1f5;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); }
+  header.top { background: #10243e; color: #fff; padding: 10px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header.top h1 { font-size: 17px; margin: 0; }
+  header.top nav a { color: #bcd3f2; margin-right: 14px; text-decoration: none; font-size: 13px; }
+  header.top nav a:hover { color: #fff; }
+  .conn { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; }
+  .dot.ok { background: #4ade80; } .dot.bad { background: #f87171; }
+  .wrap { max-width: 1080px; margin: 18px auto; padding: 0 16px; }
+  .banner { border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .banner.offline { background: var(--red-bg); color: var(--red); border: 1px solid #f3a3a3; }
+  .banner.recovered { background: var(--green-bg); color: var(--green); border: 1px solid #9bd4ad; }
+  .banner.info { background: var(--blue-bg); color: var(--blue); border: 1px solid #a9c3f0; }
+  .banner strong { font-weight: 700; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+  .card.run { border-left-width: 5px; border-left-color: var(--blue); }
+  .card.run.drill { border-left-color: var(--amber-line); background: linear-gradient(0deg, transparent 38px, transparent 38px), var(--card); }
+  .card-head { padding: 12px 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+  .card.run.drill .card-head { background: repeating-linear-gradient(45deg, var(--amber-bg), var(--amber-bg) 12px, #fff7e0 12px, #fff7e0 24px); }
+  .card-head h2 { font-size: 15px; margin: 0; }
+  .meta { color: var(--muted); font-size: 12.5px; }
+  .runid { font-family: ui-monospace, monospace; font-size: 11.5px; color: var(--muted); }
+  .spacer { flex: 1; }
+  .badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .badge.drill { background: var(--amber); color: #fff; letter-spacing: .5px; }
+  .badge.live { background: var(--blue); color: #fff; }
+  .badge.staged { background: var(--gray-bg); color: #475569; }
+  .badge.submitting { background: var(--blue-bg); color: var(--blue); }
+  .badge.submitted { background: var(--green-bg); color: var(--green); }
+  .badge.conflict { background: var(--red-bg); color: var(--red); }
+  .badge.error { background: #fff1e7; color: #c2410c; }
+  .badge.remote-created { background: var(--green-bg); color: var(--green); }
+  .badge.remote-pending { background: var(--gray-bg); color: #475569; }
+  .badge.remote-conflict { background: var(--red-bg); color: var(--red); }
+  .badge.remote-readonly { background: #e0e7ff; color: #3730a3; }
+  .card-body { padding: 14px 16px; }
+  form.entry { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 8px; align-items: end; margin-bottom: 6px; }
+  form.entry label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+  input, select, button { font: inherit; }
+  input, select { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); width: 100%; }
+  button { padding: 6px 13px; border-radius: 6px; border: 1px solid var(--blue); background: var(--blue); color: #fff; cursor: pointer; white-space: nowrap; }
+  button.secondary { background: #fff; color: var(--blue); }
+  button.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
+  button.danger { background: #fff; border-color: #e2a0a0; color: var(--red); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .newrun { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)) auto; gap: 8px; align-items: end; }
+  .newrun label, form.entry label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+  .checkline { flex-direction: row !important; align-items: center; gap: 6px; color: var(--ink) !important; font-size: 13px !important; white-space: nowrap; }
+  .drill-warn { display: none; background: var(--amber-bg); border: 1px dashed var(--amber-line); color: var(--amber); border-radius: 6px; padding: 6px 10px; margin-top: 8px; font-size: 12.5px; }
+  .drill-warn.on { display: block; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; flex-wrap: wrap; }
+  .toolbar select { width: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef1f5; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; background: #fafbfd; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.row-conflict { background: #fff8f8; }
+  tr.row-submitted { color: #4b5563; }
+  .conflictbox { background: var(--red-bg); border: 1px solid #f0b4b4; color: var(--red); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; margin-top: 8px; }
+  .conflictbox .why { font-weight: 700; }
+  .conflictbox .ops { margin-top: 5px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .conflictbox button { padding: 2px 10px; font-size: 12px; }
+  .empty { color: var(--muted); padding: 10px 0; }
+  .server-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .stale { color: var(--red); font-weight: 600; }
+  .syncing { color: var(--blue); }
+  .counts { font-size: 12.5px; color: var(--muted); display: flex; gap: 12px; }
+  .counts b { font-weight: 700; }
+  h3.sec { font-size: 13px; margin: 14px 0 2px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>WaveLab 测量录入台</h1>
+  <nav>
+    <a href="/equipment" target="_blank">设备页（固定演练）</a>
+    <a href="/interlocks" target="_blank">联锁页（固定演练）</a>
+    <a href="/incidents" target="_blank">事件页（固定演练）</a>
+  </nav>
+  <div class="conn"><span id="connDot" class="dot"></span><span id="connText">检测连接中…</span></div>
+</header>
+<div class="wrap">
+  <div id="banners"></div>
+
+  <div class="card">
+    <div class="card-head"><h2>新建测量运行</h2><span class="meta">运行 ID 在本机生成，断网时也可先暂存读数，恢复连接后再确认上传</span></div>
+    <div class="card-body">
+      <form id="newRunForm" class="newrun" autocomplete="off">
+        <label>运行名称<input name="name" required placeholder="如：船型 A 拖航 3"></label>
+        <label>模型<input name="model_name" required placeholder="model-hull"></label>
+        <label>区段<input name="section" required placeholder="section-a"></label>
+        <label>拖车<input name="carriage" required placeholder="carriage-1"></label>
+        <label class="checkline"><input type="checkbox" name="drill" id="newDrill" style="width:auto"> 演练数据（DRILL）</label>
+        <button type="submit">建立运行（本机）</button>
+      </form>
+      <div class="drill-warn" id="drillWarn">⚠ 该运行将标记为<b>演练</b>：读数全程带琥珀色演练标识，与真实测量数据分开呈现，不会被当作正式结果。</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button id="syncAllBtn">分批确认全部待提交读数</button>
+    <button class="secondary" id="refreshServerBtn">从服务器刷新并核对</button>
+    <span class="meta">读数先暂存在本机浏览器（按运行 / 探头分组），确认后分批上传；每帧带本机帧号，网络重试不会产生重复读数。</span>
+  </div>
+
+  <div id="runs"></div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- 本机暂存 ---------- */
+const STORE_KEY = "wavelab.console.v1";
+const BATCH_SIZE = 25;
+
+/**
+ * state.runs[runId] = {id,name,model_name,section,carriage,drill,createdAt,
+ *   remoteState: 'pending'|'created'|'conflict'|'readonly', remoteNote, checkedAt}
+ * state.frames[frameId] = {id(client_id), run, kind, source_id, value, recorded_at,
+ *   createdAt, status: 'staged'|'submitting'|'submitted'|'conflict'|'error',
+ *   serverId, conflict: {reason,message,existing}|null, note}
+ */
+let state = { runs: {}, frames: {} };
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) state = JSON.parse(raw);
+  } catch (e) { console.warn("暂存数据读取失败", e); }
+  state.runs ||= {}; state.frames ||= {};
+}
+function saveState() {
+  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+}
+function uuid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+}
+function esc(s) { return String(s ?? ""); }
+
+/* ---------- 连接状态 ---------- */
+let online = navigator.onLine;
+let reachable = null;
+async function probe() {
+  if (!navigator.onLine) { reachable = false; return; }
+  try {
+    const r = await fetch("/healthz", { cache: "no-store" });
+    reachable = r.ok;
+  } catch { reachable = false; }
+}
+function connected() { return online && reachable; }
+
+/* ---------- API ---------- */
+async function api(method, url, body) {
+  const opts = { method, headers: {}, cache: "no-store" };
+  if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  const r = await fetch(url, opts);
+  let payload = null;
+  try { payload = await r.json(); } catch { /* 非 JSON */ }
+  return { status: r.status, payload };
+}
+const reasonText = {
+  duplicate_frame: "重复帧（与服务器已有读数一致），已按重试处理",
+  frame_content_mismatch: "同一帧号提交了不同的读数内容",
+  duplicate_observation: "同一探头、类型与观测时刻已有另一帧读数",
+  invalid_frame: "帧数据未通过服务器校验",
+  run_content_mismatch: "该运行 ID 在服务器上的元数据或演练标记不一致"
+};
+
+/* ---------- 同步：先确保运行存在，再分批确认帧 ---------- */
+let syncing = false;
+
+async function ensureRun(run) {
+  if (run.remoteState === "created" || run.remoteState === "readonly") return true;
+  const { status, payload } = await api("POST", "/api/measured-runs", {
+    id: run.id, name: run.name, model_name: run.model_name,
+    section: run.section, carriage: run.carriage, drill: run.drill
+  });
+  if (status === 200) { run.remoteState = "created"; run.remoteNote = ""; return true; }
+  const reason = payload && payload.error && payload.error.reason;
+  if (reason === "run_content_mismatch") {
+    run.remoteState = "conflict";
+    run.remoteNote = (payload.error && payload.error.message) || reasonText[reason];
+    run.remoteExisting = payload.error && payload.error.existing;
+  } else {
+    run.remoteNote = (payload && payload.error && payload.error.message) || ("HTTP " + status);
+  }
+  return false;
+}
+
+function retryableFrames(runId) {
+  return Object.values(state.frames)
+    .filter(f => f.run === runId && (f.status === "staged" || f.status === "error"))
+    .sort((a, b) => a.recorded_at.localeCompare(b.recorded_at) || a.createdAt.localeCompare(b.createdAt));
+}
+
+async function syncRun(runId) {
+  const run = state.runs[runId];
+  if (!run || !connected()) return { ok: false };
+  if (!(await ensureRun(run))) { saveState(); render(); return { ok: false }; }
+
+  let pending = retryableFrames(runId);
+  let anyFailure = false;
+  while (pending.length) {
+    const batch = pending.slice(0, BATCH_SIZE);
+    batch.forEach(f => { f.status = "submitting"; });
+    saveState(); render();
+    const payload = { frames: batch.map(f => ({
+      client_id: f.id, kind: f.kind, source_id: f.source_id,
+      value: f.value, recorded_at: f.recorded_at
+    })) };
+    let res;
+    try {
+      res = await api("POST", "/api/measured-runs/" + encodeURIComponent(runId) + "/evidence/batch", payload);
+    } catch (e) {
+      res = { status: 0, payload: null };
+    }
+    if (res.status !== 200 || !res.payload || res.payload.status !== "ok") {
+      // 整批未确认：保留为待提交，等待下次恢复后重试
+      const msg = res.status === 0 ? "网络中断，未收到服务器确认" : ("服务器返回 HTTP " + res.status);
+      batch.forEach(f => { f.status = "error"; f.note = msg; f.conflict = null; });
+      anyFailure = true;
+      saveState(); render();
+      break;
+    }
+    const data = res.payload.data;
+    const byClient = {};
+    (data.accepted || []).forEach(ev => { byClient[ev.client_id] = ev; });
+    batch.forEach(f => {
+      const found = (data.conflicts || []).find(c => c.client_id === f.id);
+      if (byClient[f.id]) {
+        f.status = "submitted"; f.serverId = byClient[f.id].id; f.conflict = null; f.note = "";
+      } else if (found && found.reason === "duplicate_frame") {
+        // 幂等重试：服务器先前已收到完全一致的帧
+        f.status = "submitted"; f.serverId = found.existing ? found.existing.id : "";
+        f.conflict = null; f.note = "";
+      } else if (found) {
+        f.status = "conflict";
+        f.conflict = { reason: found.reason, message: found.message, existing: found.existing || null };
+        f.note = reasonText[found.reason] || found.reason;
+      } else {
+        f.status = "error"; f.note = "服务器响应中缺少该帧的结果";
+      }
+    });
+    saveState(); render();
+    pending = pending.slice(batch.length);
+    // 重新从 state 取（理论上未处理的仍是 staged/error，但循环切片已够）
+  }
+  run.checkedAt = new Date().toISOString();
+  saveState(); render();
+  return { ok: !anyFailure };
+}
+
+async function syncAll() {
+  if (syncing || !connected()) return;
+  syncing = true; updateChrome();
+  const ids = Object.values(state.runs)
+    .filter(r => r.remoteState !== "readonly")
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map(r => r.id);
+  for (const id of ids) { await syncRun(id); }
+  syncing = false; saveState(); render();
+}
+
+/* ---------- 与服务器核对 ---------- */
+async function refreshFromServer() {
+  if (!connected()) return;
+  const { status, payload } = await api("GET", "/api/measured-runs");
+  if (status !== 200 || !payload || payload.status !== "ok") return;
+  const serverRuns = payload.data || [];
+  for (const sr of serverRuns) {
+    const id = sr.operation.id;
+    if (!state.runs[id]) {
+      // 服务器有、本机没有：只读导入，全部计为已提交
+      state.runs[id] = {
+        id, name: sr.operation.name, model_name: sr.operation.model_name,
+        section: sr.operation.section, carriage: sr.operation.carriage,
+        drill: !!sr.drill, createdAt: sr.operation.created_at,
+        remoteState: "readonly", remoteNote: "", checkedAt: new Date().toISOString()
+      };
+      (sr.evidence || []).forEach(ev => {
+        const fid = ev.client_id || ("server-" + ev.id);
+        if (!state.frames[fid]) {
+          state.frames[fid] = {
+            id: fid, run: id, kind: ev.kind, source_id: ev.source_id, value: ev.value,
+            recorded_at: ev.recorded_at, createdAt: ev.recorded_at,
+            status: "submitted", serverId: ev.id, conflict: null, note: ""
+          };
+        }
+      });
+    } else {
+      const run = state.runs[id];
+      run.checkedAt = new Date().toISOString();
+      const serverEvidence = sr.evidence || [];
+      // 服务器已存在该运行：若本机还停在待上传，则升级为已确认
+      if (run.remoteState === "pending" || run.remoteState === "conflict") {
+        const same = run.name === sr.operation.name && run.model_name === sr.operation.model_name &&
+          run.section === sr.operation.section && run.carriage === sr.operation.carriage &&
+          !!run.drill === !!sr.drill;
+        if (same) { run.remoteState = "created"; run.remoteNote = ""; }
+      }
+      if (run.remoteState === "created") {
+        // 以服务器帧号（client_id）精确核对本机已提交读数
+        const serverIds = new Set(serverEvidence.map(e => e.client_id || ""));
+        Object.values(state.frames).forEach(f => {
+          if (f.run !== id || f.status !== "submitted") return;
+          f.note = serverIds.has(f.id) ? "" : "服务器上未找到该帧，请重新核对";
+        });
+      }
+    }
+  }
+  saveState(); render();
+}
+
+/* ---------- 冲突处理 ---------- */
+function resolveUseServer(fid) {
+  const f = state.frames[fid];
+  if (!f || !f.conflict || !f.conflict.existing) return;
+  const ev = f.conflict.existing;
+  f.kind = ev.kind; f.source_id = ev.source_id; f.value = ev.value;
+  f.recorded_at = ev.recorded_at; f.status = "submitted";
+  f.serverId = ev.id; f.conflict = null; f.note = "已采用服务器读数";
+  saveState(); render();
+}
+function resolveDiscard(fid) {
+  const f = state.frames[fid];
+  if (!f) return;
+  if (f.status === "submitted") return;
+  delete state.frames[fid]; saveState(); render();
+}
+function resolveEdit(fid) {
+  const f = state.frames[fid];
+  if (!f) return;
+  const v = prompt("修改读数数值后将作为新帧重新暂存（原冲突帧丢弃）：", f.value);
+  if (v === null) return;
+  const num = Number(v);
+  if (!Number.isFinite(num)) { alert("数值无效"); return; }
+  // 新帧新帧号，避免再次命中旧 client_id
+  delete state.frames[fid];
+  addFrame(f.run, { kind: f.kind, source_id: f.source_id, value: num, recorded_at: f.recorded_at });
+}
+
+/* ---------- 暂存操作 ---------- */
+function addFrame(runId, fields) {
+  const now = new Date().toISOString();
+  const fid = uuid();
+  state.frames[fid] = {
+    id: fid, run: runId, kind: fields.kind, source_id: fields.source_id.trim(),
+    value: fields.value, recorded_at: fields.recorded_at,
+    createdAt: now, status: "staged", serverId: "", conflict: null, note: ""
+  };
+  saveState(); render();
+}
+
+function runCounts(runId) {
+  const c = { staged: 0, submitting: 0, submitted: 0, conflict: 0, error: 0 };
+  Object.values(state.frames).forEach(f => { if (f.run === runId && c[f.status] !== undefined) c[f.status]++; });
+  return c;
+}
+
+/* ---------- 渲染 ---------- */
+const el = (tag, attrs = {}, ...kids) => {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  kids.flat().forEach(k => node.append(k && k.nodeType ? k : document.createTextNode(esc(k))));
+  return node;
+};
+const badge = (cls, text) => el("span", { class: "badge " + cls, text: text });
+
+function renderBanners() {
+  const box = document.getElementById("banners");
+  box.textContent = "";
+  if (!connected()) {
+    box.append(el("div", { class: "banner offline" },
+      el("strong", { text: "● 离线 / 服务器不可达 —— " }),
+      "读数正按运行和探头暂存在本机，不会丢失；恢复连接后请分批确认上传。"));
+  } else {
+    const pending = Object.values(state.frames).filter(f => f.status === "staged" || f.status === "error").length;
+    if (pending > 0) {
+      const b = el("div", { class: "banner recovered" },
+        el("strong", { text: "连接已恢复。" }),
+        "本机有 " + pending + " 条待提交读数。",
+        el("button", { onclick: () => syncAll(), text: "立即分批确认上传" }));
+      box.append(b);
+    } else {
+      box.append(el("div", { class: "banner info" },
+        el("strong", { text: "已连接服务器。" }), "所有读数均已确认。"));
+    }
+  }
+  const conflictFrames = Object.values(state.frames).filter(f => f.status === "conflict").length;
+  const conflictRuns = Object.values(state.runs).filter(r => r.remoteState === "conflict").length;
+  if (conflictFrames + conflictRuns > 0) {
+    box.append(el("div", { class: "banner offline" },
+      el("strong", { text: "有 " + (conflictFrames + conflictRuns) + " 项冲突需要核对：" }),
+      "服务器对重复帧给出了原因，请在下方运行卡片中逐条核对处理。"));
+  }
+}
+
+function updateChrome() {
+  document.getElementById("connDot").className = "dot " + (connected() ? "ok" : "bad");
+  document.getElementById("connText").textContent =
+    !navigator.onLine ? "网络离线（本机暂存）" :
+    reachable === false ? "服务器不可达（本机暂存）" :
+    syncing ? "正在分批确认上传…" : "已连接";
+  document.getElementById("syncAllBtn").disabled = syncing || !connected();
+  document.getElementById("refreshServerBtn").disabled = !connected();
+  renderBanners();
+}
+
+function frameTable(run) {
+  const filterSel = el("select", {},
+    el("option", { value: "all", text: "全部状态" }),
+    el("option", { value: "staged", text: "待提交" }),
+    el("option", { value: "submitted", text: "已提交" }),
+    el("option", { value: "conflict", text: "冲突" }),
+    el("option", { value: "error", text: "传输失败" }));
+  const probeSel = el("select", {}, el("option", { value: "all", text: "全部探头" }));
+  const probes = [...new Set(Object.values(state.frames).filter(f => f.run === run.id).map(f => f.source_id))].sort();
+  probes.forEach(p => probeSel.append(el("option", { value: p, text: p })));
+
+  const tableWrap = el("div");
+  function draw() {
+    tableWrap.textContent = "";
+    let frames = Object.values(state.frames).filter(f => f.run === run.id);
+    if (probeSel.value !== "all") frames = frames.filter(f => f.source_id === probeSel.value);
+    if (filterSel.value !== "all") frames = frames.filter(f => f.status === filterSel.value);
+    frames.sort((a, b) => a.source_id.localeCompare(b.source_id) || a.recorded_at.localeCompare(b.recorded_at));
+    if (!frames.length) { tableWrap.append(el("div", { class: "empty", text: "暂无读数。" })); return; }
+    const table = el("table");
+    table.append(el("thead", {}, el("tr", {},
+      el("th", { text: "探头" }), el("th", { text: "类型" }),
+      el("th", { class: "num", text: "读数" }), el("th", { text: "观测时刻 (UTC)" }),
+      el("th", { text: "状态" }), el("th", { text: "操作" }))));
+    const tbody = el("tbody");
+    frames.forEach(f => {
+      const tr = el("tr", { class: "row-" + f.status });
+      tr.append(
+        el("td", { text: f.source_id }),
+        el("td", { text: f.kind === "wave_time" ? "波面时刻" : "力" }),
+        el("td", { class: "num", text: String(f.value) }),
+        el("td", { text: f.recorded_at.replace("T", " ").replace(/\.\d+Z$/, "Z") }),
+        el("td", {}, badge(f.status,
+          { staged: "待提交", submitting: "提交中…", submitted: "已提交", conflict: "冲突", error: "传输失败" }[f.status])));
+      const ops = el("td");
+      if (f.status === "staged" || f.status === "error") {
+        ops.append(el("button", { class: "danger", style: "padding:2px 8px;font-size:12px", onclick: () => resolveDiscard(f.id), text: "移除" }));
+      }
+      tr.append(ops);
+      tbody.append(tr);
+      if (f.status === "conflict" && f.conflict) {
+        const box = el("div", { class: "conflictbox" });
+        const ex = f.conflict.existing;
+        box.append(el("div", { class: "why", text: "冲突原因：" + (reasonText[f.conflict.reason] || f.conflict.reason) }));
+        box.append(el("div", { text: f.conflict.message || "" }));
+        if (ex) {
+          box.append(el("div", { text: "服务器已有读数：探头 " + ex.source_id + " / " + ex.kind +
+            " = " + ex.value + " @ " + ex.recorded_at }));
+        }
+        const opsLine = el("div", { class: "ops" });
+        if (ex) opsLine.append(el("button", { class: "secondary", onclick: () => resolveUseServer(f.id), text: "采用服务器值（标记已提交）" }));
+        opsLine.append(el("button", { class: "secondary", onclick: () => resolveEdit(f.id), text: "修改后作为新帧暂存" }));
+        opsLine.append(el("button", { class: "danger", onclick: () => resolveDiscard(f.id), text: "丢弃本机帧" }));
+        box.append(opsLine);
+        const tdFull = el("td", { colspan: "6" }); tdFull.append(box);
+        tbody.append(el("tr", { class: "row-conflict" }, tdFull));
+      } else if (f.note) {
+        const tdFull = el("td", { colspan: "6", class: f.status === "submitted" ? "server-note" : "conflictbox", text: f.note });
+        tbody.append(el("tr", {}, tdFull));
+      }
+    });
+    table.append(tbody);
+    tableWrap.append(table);
+  }
+  filterSel.addEventListener("change", draw);
+  probeSel.addEventListener("change", draw);
+  const bar = el("div", { class: "toolbar" },
+    el("span", { class: "meta", text: "筛选：" }), probeSel, filterSel);
+  const frag = document.createDocumentFragment();
+  frag.append(bar, tableWrap);
+  draw();
+  return frag;
+}
+
+function entryForm(run) {
+  const form = el("form", { class: "entry", autocomplete: "off" });
+  const kind = el("select", { name: "kind" },
+    el("option", { value: "wave_time", text: "波面时刻 wave_time" }),
+    el("option", { value: "force", text: "力 force" }));
+  const source = el("input", { name: "source_id", required: true, placeholder: "探头编号，如 probe-a" });
+  const value = el("input", { name: "value", type: "number", step: "any", required: true, placeholder: "数值" });
+  const at = el("input", { name: "recorded_at", type: "datetime-local", step: "0.001" });
+  form.append(
+    el("label", {}, "类型", kind),
+    el("label", {}, "探头 source_id", source),
+    el("label", {}, "读数", value),
+    el("label", {}, "观测时刻（留空=现在）", at),
+    el("button", { type: "submit", text: "加入暂存（本机）" }));
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const num = Number(value.value);
+    if (!Number.isFinite(num)) { alert("请输入有限数值"); return; }
+    const ts = at.value ? new Date(at.value).toISOString() : new Date().toISOString();
+    addFrame(run.id, { kind: kind.value, source_id: source.value, value: num, recorded_at: ts });
+    value.value = ""; at.value = ""; source.focus();
+  });
+  return form;
+}
+
+function runCard(run) {
+  const counts = runCounts(run.id);
+  const card = el("div", { class: "card run" + (run.drill ? " drill" : "") });
+  const head = el("div", { class: "card-head" });
+  head.append(
+    badge(run.drill ? "drill" : "live", run.drill ? "演练 DRILL" : "真实测量"),
+    el("h2", { text: run.name }),
+    el("span", { class: "meta", text: run.model_name + " · " + run.section + " · " + run.carriage }));
+  const remoteBadge = {
+    created: badge("remote-created", "服务器已确认"),
+    pending: badge("remote-pending", "仅本机·待上传"),
+    conflict: badge("remote-conflict", "运行冲突"),
+    readonly: badge("remote-readonly", "服务器数据·只读")
+  }[run.remoteState] || badge("remote-pending", "仅本机·待上传");
+  head.append(el("span", { class: "spacer" }), remoteBadge,
+    el("span", { class: "runid", text: run.id }));
+  card.append(head);
+  const body = el("div", { class: "card-body" });
+
+  if (run.remoteState === "conflict") {
+    const box = el("div", { class: "conflictbox" },
+      el("div", { class: "why", text: "运行元数据冲突：" + (run.remoteNote || "") }));
+    if (run.remoteExisting) {
+      const o = run.remoteExisting.operation || {};
+      box.append(el("div", { text: "服务器上的运行：" + (o.name || "") + " / " + (o.model_name || "") +
+        " / " + (o.section || "") + " / " + (o.carriage || "") +
+        (run.remoteExisting.drill ? "（演练）" : "（真实测量）") }));
+    }
+    const ops = el("div", { class: "ops" },
+      el("button", { class: "secondary", onclick: () => {
+        // 以服务器元数据为准，本机帧继续向同一运行上传
+        const ex = run.remoteExisting;
+        if (ex && ex.operation) {
+          const o = ex.operation;
+          run.name = o.name; run.model_name = o.model_name;
+          run.section = o.section; run.carriage = o.carriage;
+          run.drill = !!ex.drill; run.remoteState = "created"; run.remoteNote = "";
+          saveState(); render();
+        }
+      }, text: "采用服务器元数据" }));
+    box.append(ops);
+    body.append(box);
+  }
+
+  body.append(el("div", { class: "counts" },
+    el("span", {}, "已提交 ", el("b", { text: String(counts.submitted) })),
+    el("span", {}, "待提交 ", el("b", { text: String(counts.staged + counts.submitting + counts.error) })),
+    el("span", {}, "冲突 ", el("b", { text: String(counts.conflict) })),
+    run.checkedAt ? el("span", { text: "上次核对：" + new Date(run.checkedAt).toLocaleString() }) : null));
+
+  if (run.remoteState !== "readonly") {
+    const tb = el("div", { class: "toolbar" });
+    tb.append(
+      el("button", {
+        onclick: async e => { e.target.disabled = true; await syncRun(run.id); },
+        text: "分批确认上传本运行"
+      }),
+      el("button", {
+        class: "secondary",
+        onclick: async e => {
+          e.target.disabled = true;
+          const { status, payload } = connected() ? await api("GET", "/api/measured-runs/" + encodeURIComponent(run.id)) : { status: 0 };
+          if (status === 200 && payload.status === "ok") {
+            run.checkedAt = new Date().toISOString();
+            const serverIds = new Set((payload.data.evidence || []).map(x => x.client_id || ""));
+            Object.values(state.frames).forEach(f => {
+              if (f.run === run.id && f.status === "submitted")
+                f.note = serverIds.has(f.id) ? "" : "服务器上未找到该帧，请重新核对";
+            });
+            saveState(); render();
+          } else if (status === 404 && run.remoteState === "created") {
+            run.remoteState = "pending"; run.remoteNote = "服务器上不存在该运行，可重新确认上传";
+            saveState(); render();
+          }
+        },
+        text: "与服务器核对本运行"
+      }));
+    if (counts.submitted === 0) {
+      tb.append(el("button", {
+        class: "ghost", onclick: () => {
+          if (!confirm("删除本机运行及其全部暂存读数？")) return;
+          Object.values(state.frames).forEach(f => { if (f.run === run.id) delete state.frames[f.id]; });
+          delete state.runs[run.id]; saveState(); render();
+        }, text: "删除本机运行" }));
+    }
+    body.append(tb, entryForm(run));
+  } else {
+    body.append(el("div", { class: "server-note",
+      text: "该运行来自服务器，本机为只读核对视图，不能在此录入。" }));
+  }
+  body.append(frameTable(run));
+  card.append(body);
+  return card;
+}
+
+function render() {
+  updateChrome();
+  const box = document.getElementById("runs");
+  box.textContent = "";
+  const runs = Object.values(state.runs).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (!runs.length) {
+    box.append(el("div", { class: "card" }, el("div", { class: "card-body empty",
+      text: "还没有测量运行。先在上方建立运行；断网时读数也会安全暂存在本机。" })));
+    return;
+  }
+  // 真实测量在前还是演练在前？真实优先，演练靠后并保留醒目标识
+  runs.sort((a, b) => Number(a.drill) - Number(b.drill) || b.createdAt.localeCompare(a.createdAt));
+  runs.forEach(r => box.append(runCard(r)));
+}
+
+/* ---------- 事件绑定 ---------- */
+document.getElementById("newDrill").addEventListener("change", e => {
+  document.getElementById("drillWarn").classList.toggle("on", e.target.checked);
+});
+document.getElementById("newRunForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const f = e.target;
+  const run = {
+    id: uuid(),
+    name: f.name.value.trim(), model_name: f.model_name.value.trim(),
+    section: f.section.value.trim(), carriage: f.carriage.value.trim(),
+    drill: f.drill.checked, createdAt: new Date().toISOString(),
+    remoteState: "pending", remoteNote: "", checkedAt: ""
+  };
+  if (!run.name || !run.model_name || !run.section || !run.carriage) { alert("请填写完整的运行信息"); return; }
+  state.runs[run.id] = run;
+  f.reset(); document.getElementById("drillWarn").classList.remove("on");
+  saveState(); render();
+});
+document.getElementById("syncAllBtn").addEventListener("click", syncAll);
+document.getElementById("refreshServerBtn").addEventListener("click", refreshFromServer);
+
+window.addEventListener("online", async () => { online = true; await probe(); render(); });
+window.addEventListener("offline", () => { online = false; reachable = false; render(); });
+
+/* ---------- 启动 ---------- */
+loadState();
+render();
+(async function loop() {
+  const was = connected();
+  await probe();
+  if (was !== connected()) render(); else updateChrome();
+  setTimeout(loop, 15000);
+})();
+</script>
+</body>
+</html>

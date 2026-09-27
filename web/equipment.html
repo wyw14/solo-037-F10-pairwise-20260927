@@ -1,1 +1,3 @@
-<!doctype html><html><head><meta charset="utf-8"><title>WaveLab Equipment</title></head><body><main><h1>Equipment</h1><pre id="data">loading</pre></main><script>fetch('/api/equipment').then(r=>r.json()).then(v=>data.textContent=JSON.stringify(v,null,2))</script></body></html>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>WaveLab Equipment</title>
+<style>body{font:14px system-ui,"Microsoft YaHei",sans-serif;margin:0;background:#f4f6f9;color:#1f2933}.drill{background:#fef3c7;color:#92400e;border-bottom:2px solid #d97706;padding:8px 16px;font-weight:600}main{padding:14px 20px}a{color:#1d4ed8}</style></head>
+<body><div class="drill">⚠ 演练数据（DRILL）· 固定调试场景，非现场真实测量。现场读数请使用 <a href="/operations">测量录入台</a>。</div><main><h1>Equipment</h1><pre id="data">loading</pre></main><script>fetch('/api/equipment').then(r=>r.json()).then(v=>data.textContent=JSON.stringify(v,null,2))</script></body></html>

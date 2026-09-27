@@ -32,6 +32,7 @@ func (r *Router) Handler() http.Handler {
 	router.Post("/api/measured-runs", r.createMeasuredRun)
 	router.Get("/api/measured-runs/{id}", r.measuredRun)
 	router.Post("/api/measured-runs/{id}/evidence", r.recordMeasurement)
+	router.Post("/api/measured-runs/{id}/evidence/batch", r.recordMeasurements)
 	router.Get("/api/measured-runs/{id}/analysis", r.measurementAnalysis)
 	tests := TestHandler{Service: r.dependencies}
 	router.Post("/api/operations", tests.Create)
